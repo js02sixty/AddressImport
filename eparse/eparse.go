@@ -2,64 +2,95 @@ package eparse
 
 import (
 	"bufio"
-	"io"
+	"fmt"
+	"log"
 	"os"
+	"regexp"
 )
+
+func readWords(path string) ([]string, error) {
+	// open input file
+	fi, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer fi.Close()
+
+	var words []string
+	scanner := bufio.NewScanner(fi)
+	scanner.Split(bufio.ScanWords)
+	for scanner.Scan() {
+		words = append(words, scanner.Text())
+	}
+	return words, scanner.Err()
+}
+
+func writeWords(words []string, path string) error {
+	// open output file
+	fo, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer fo.Close()
+
+	w := bufio.NewWriter(fo)
+	fmt.Fprintf(w, "\"E-mail Address\"\r\n")
+	for _, word := range words {
+		fmt.Fprintf(w, "\"%s\"\r\n", word)
+	}
+	return w.Flush()
+}
+
+func removeDuplicates(xs *[]string) (dupes int) {
+	found := make(map[string]bool)
+	dupes = 0
+	j := 0
+	for i, x := range *xs {
+		if !found[x] {
+			found[x] = true
+			(*xs)[j] = (*xs)[i]
+			j++
+		} else {
+			dupes++
+		}
+	}
+	*xs = (*xs)[:j]
+	return
+}
+
+// filterEmails looks for Valid Email Addresses
+func filterEmails(words []string) (emails []string, valid int) {
+	// emails = make([]string, 1)
+	re := regexp.MustCompile(`[A-Z,.,a-z,\d]+(@\S+)(\.\w+)`)
+	valid = 0
+	for _, x := range words {
+		if re.MatchString(x) {
+			valid++
+			emails = append(emails, re.FindString(x))
+		}
+	}
+	return
+}
 
 // Parse file
 func Parse(source string, destination string) (err error) {
-
-	// open input file
-	fi, err := os.Open(source)
+	words, err := readWords(source)
 	if err != nil {
-		return err
+		log.Fatalf("readWords: %s", err)
 	}
 
-	// close fi on exit and check for its returned error
-	defer func() error {
-		if err = fi.Close(); err != nil {
-			return err
-		}
-		return nil
-	}()
+	emails, valid := filterEmails(words)
+	fmt.Printf("Found %d email addresses\n", valid)
 
-	// open output file
-	fo, err := os.Create(destination)
-	if err != nil {
-		return err
-	}
-	// close fo on exit and check for its returned error
-	defer func() error {
-		if err = fo.Close(); err != nil {
-			return err
-		}
-		return nil
-	}()
+	dupes := removeDuplicates(&emails)
+	fmt.Printf("Removed %d duplicates\n", dupes)
 
-	r := bufio.NewReader(fi) // read buffer
-	w := bufio.NewWriter(fo) // write buffer
-
-	// make a buffer to keep chunks that are read
-	buf := make([]byte, 1024)
-	for {
-		// read a chunk
-		var n int
-		n, err = r.Read(buf)
-		if err != nil && err != io.EOF {
-			return err
-		}
-		if n == 0 {
-			break
-		}
-		// write a chunk
-		if _, err = w.Write(buf[:n]); err != nil {
-			return err
-		}
+	if err := writeWords(emails, destination); err != nil {
+		log.Fatalf("writeWords: %s", err)
 	}
 
-	if err = w.Flush(); err != nil {
-		return err
-	}
+	fmt.Printf("Created document with %d emails", len(emails))
+
 	return nil
 
 }
