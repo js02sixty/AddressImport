@@ -89,7 +89,7 @@ func Parse(source string, destination string) (err error) {
 		log.Fatalf("writeWords: %s", err)
 	}
 
-	fmt.Printf("Created document with %d emails", len(emails))
+	fmt.Printf("Created document with %d emails\n", len(emails))
 
 	return nil
 
